@@ -75,9 +75,11 @@ export default function Results({
 
       // wrap enabler name if long
       const maxWidth = colX.total - colX.enabler - 2;
-      const lines = pdf.splitTextToSize(t.name, maxWidth);
+	  // 1. Explicitly define 'lines' as an array of strings (string[])
+	  const lines: string[] = pdf.splitTextToSize(t.name, maxWidth);
+      // older version:  const lines = pdf.splitTextToSize(t.name, maxWidth);
 
-      lines.forEach((ln, i) => {
+      lines.forEach((ln: string, i) => {
         if (i === 0) {
           pdf.text(String(ln), colX.enabler, y);
           pdf.text(String(t.sum), colX.total, y, { align: "left" });
