@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { enablers } from "./seed/enablers";
 import Results from "./ui/Results";
-import Enabler, { ThemePair } from "./ui/Enabler";
+import Enabler, { type StageScore } from "./ui/Enabler";
 import Header from "./ui/Header";
 
 type TotalsRow = { name: string; sum: number; readiness: number; status: string };
@@ -12,36 +12,52 @@ type TotalsRow = { name: string; sum: number; readiness: number; status: string 
 export default function AIReadinessCheckPage() {
   const [page, setPage] = useState(0);
 
-  // one {blue,orange} per theme
-  const initial = Object.fromEntries(
-    enablers.map((e) => [e.name, e.themes.map<ThemePair>(() => ({ blue: 0, orange: 0 }))])
+  // one 5-point score per theme; default = 2 (Neutral / Don't know)
+  const [scores, setScores] = useState<Record<string, StageScore[]>>(() =>
+    Object.fromEntries(
+      enablers.map((e) => [e.name, e.themes.map<StageScore>(() => 2)])
+    )
   );
-  const [scores, setScores] = useState<Record<string, ThemePair[]>>(initial);
 
-  // shared links remain the same
+  // shared links (read-only mode)
   const [shared, setShared] = useState<null | { totals: TotalsRow[]; avg: number }>(null);
+
   useEffect(() => {
     const encoded = new URLSearchParams(window.location.search).get("results");
     if (!encoded) return;
     try {
       const parsed = JSON.parse(atob(encoded));
-      if (parsed?.totals && typeof parsed?.avg === "number") setShared(parsed);
-    } catch {}
+      if (parsed?.totals && typeof parsed?.avg === "number") {
+        setShared(parsed);
+      }
+    } catch {
+      // ignore malformed query param
+    }
   }, []);
 
   const totalsFromState = (): TotalsRow[] =>
     enablers.map((e) => {
-      const themePairs = scores[e.name] || [];
-      const sum = themePairs.reduce((acc, p) => acc + (p.blue + p.orange), 0); // net per theme
-      const readiness = Math.round(((sum + 6) / 12) * 100); // –6..+6 → 0..100
+      const themeScores: StageScore[] = scores[e.name] || [];
+
+      // Map stage 0..4 → -2..+2 (centre = neutral)
+      const rawSum = themeScores.reduce((acc, stage) => acc + (stage - 2), 0);
+
+      // Max absolute value for this enabler (2 points either side per theme)
+      const maxAbs = Math.max(1, themeScores.length * 2);
+
+      // Normalize -maxAbs..+maxAbs → 0..100
+      const readiness = Math.round(((rawSum + maxAbs) / (2 * maxAbs)) * 100);
+
       const status =
         readiness < 25 ? "Critical" : readiness < 50 ? "At Risk" : readiness < 75 ? "Established" : "Leading";
-      return { name: e.name, sum, readiness, status };
+
+      return { name: e.name, sum: rawSum, readiness, status };
     });
 
   const computeAvg = (totals: TotalsRow[]) =>
     Math.round(totals.reduce((a, t) => a + t.readiness, 0) / Math.max(1, totals.length));
 
+  // Shared / read-only view
   if (shared) {
     return (
       <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -57,6 +73,7 @@ export default function AIReadinessCheckPage() {
     );
   }
 
+  // Results after finishing all pages
   if (page >= enablers.length) {
     const totals = totalsFromState();
     return (
@@ -84,11 +101,12 @@ export default function AIReadinessCheckPage() {
       <Enabler
         enabler={enabler}
         values={scores[enabler.name]}
-        onChange={(i, v) =>
-          setScores((s) => ({
-            ...s,
-            [enabler.name]: s[enabler.name].map((x, idx) => (idx === i ? v : x)),
-          }))
+        onChange={(i, value) =>
+          setScores((prev) => {
+            const current = prev[enabler.name] ?? enabler.themes.map<StageScore>(() => 2);
+            const next = current.map((x, idx) => (idx === i ? value : x)) as StageScore[];
+            return { ...prev, [enabler.name]: next };
+          })
         }
         onPrev={() => setPage((p) => Math.max(0, p - 1))}
         onNext={() => setPage((p) => p + 1)}

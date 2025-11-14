@@ -1,61 +1,62 @@
 // app/aireadinesscheck/ui/ArrowSlider.tsx
 "use client";
 
-type Side = "blue" | "orange";
+const STOPS = [2, 1, 0, -1, -2] as const;
+const LABELS = [
+  "Always true",
+  "Sometimes true",
+  "Neutral",
+  "Sometimes true",
+  "Always true",
+];
 
-/**
- * 3-stop range slider with an upward-pointing arrow thumb.
- * Blue:   +2 / +1 / 0
- * Orange:  0 / -1 / -2
- * The track visually spans only between the centers of the three labels.
- */
 export default function ArrowSlider({
+  // kept for backwards compatibility; not used anymore
   side,
   value,
   onChange,
   ariaLabel,
 }: {
-  side: Side;
-  value: number;            // {2,1,0} for blue, {0,-1,-2} for orange
+  side?: "blue" | "orange";
+  value: number; // one of 2, 1, 0, -1, -2
   onChange: (v: number) => void;
   ariaLabel?: string;
 }) {
-  const isBlue = side === "blue";
-  const stops = isBlue ? [2, 1, 0] : [0, -1, -2];
-  const labels = isBlue
-    ? ["Always true", "Sometimes true", "Neutral"]
-    : ["Neutral", "Sometimes not true", "Never true"];
-
-  // internal 0..2 index for the input
-  const index = Math.max(0, stops.indexOf(value));
+  // map current value to index 0..4, default to Neutral (index 2)
+  const idx = STOPS.indexOf(value as (typeof STOPS)[number]);
+  const currentIndex = idx === -1 ? 2 : idx;
 
   return (
     <div className="w-full">
-      {/* Label row (sets the visual anchors) */}
-      <div className="grid grid-cols-3 text-[11px] text-slate-500">
-        {labels.map((lab, i) => (
+      {/* labels */}
+      <div className="grid grid-cols-5 text-[11px] text-slate-500">
+        {LABELS.map((lab, i) => (
           <div
-            key={lab}
-            className={`text-center px-1 ${i === index ? (isBlue ? "text-blue-600 font-semibold" : "text-orange-600 font-semibold") : ""}`}
+            key={lab + i}
+            className={`px-1 text-center ${
+              i === currentIndex ? "text-emerald-700 font-semibold" : ""
+            }`}
           >
             {lab}
           </div>
         ))}
       </div>
 
-      {/* Track + arrow thumb.
-         We position the input so it starts at 16.66% and ends at 83.33%,
-         i.e., from the center of col 1 to the center of col 3. */}
-      <div className="relative h-8 mt-1">
+      {/* track + arrow thumb
+          Track is 80% wide starting at 10%, so it runs from the
+          centre of the first "Always true" to the centre of the last. */}
+      <div className="relative mt-2 h-8">
         <input
           type="range"
           min={0}
-          max={2}
+          max={4}
           step={1}
-          value={index}
-          onChange={(e) => onChange(stops[parseInt(e.target.value, 10)])}
+          value={currentIndex}
+          onChange={(e) =>
+            onChange(STOPS[parseInt(e.target.value, 10)] as number)
+          }
           aria-label={ariaLabel}
-          className={`arrowRange absolute left-[16.6667%] w-[66.6667%] top-1/2 -translate-y-1/2 ${isBlue ? "arrow-blue" : "arrow-orange"}`}
+          className="arrowRange absolute left-[10%] w-[80%] top-1/2 -translate-y-1/2"
         />
       </div>
 
@@ -63,31 +64,18 @@ export default function ArrowSlider({
         .arrowRange {
           -webkit-appearance: none;
           appearance: none;
+          /* NOTE: no width here – Tailwind w-[80%] controls it */
           height: 6px;
           background: rgba(148, 163, 184, 0.35); /* track */
           border-radius: 9999px;
           outline: none;
-          /* three tick marks at 0%, 50%, 100% of the shortened track */
-          background-image: linear-gradient(
-            to right,
-            transparent 0%,
-            transparent calc(0% + 0px),
-            rgba(100, 116, 139, 0.7) 0,
-            rgba(100, 116, 139, 0.7) 2px,
-            transparent 2px,
-            transparent calc(50% - 1px),
-            rgba(100, 116, 139, 0.7) calc(50% - 1px),
-            rgba(100, 116, 139, 0.7) calc(50% + 1px),
-            transparent calc(50% + 1px),
-            transparent calc(100% - 2px),
-            rgba(100, 116, 139, 0.7) calc(100% - 2px),
-            rgba(100, 116, 139, 0.7) 100%
-          );
-          background-repeat: no-repeat;
         }
-        .arrowRange:focus { box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25); }
 
-        /* WEBKIT thumb → upward triangle */
+        .arrowRange:focus {
+          box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25); /* emerald focus */
+        }
+
+        /* WEBKIT thumb → upward triangle in dark green */
         .arrowRange::-webkit-slider-thumb {
           -webkit-appearance: none;
           appearance: none;
@@ -95,11 +83,10 @@ export default function ArrowSlider({
           height: 0;
           border-left: 10px solid transparent;
           border-right: 10px solid transparent;
-          border-bottom: 18px solid #2563eb; /* blue-600 */
+          border-bottom: 18px solid #047857; /* emerald-800-ish */
           margin-top: -12px;
           cursor: pointer;
         }
-        .arrow-orange::-webkit-slider-thumb { border-bottom-color: #f97316; } /* orange-500 */
 
         /* FIREFOX track */
         .arrowRange::-moz-range-track {
@@ -107,16 +94,16 @@ export default function ArrowSlider({
           background: rgba(148, 163, 184, 0.35);
           border-radius: 9999px;
         }
-        /* FIREFOX thumb (triangle using clip-path) */
+
+        /* FIREFOX thumb → triangle via clip-path */
         .arrowRange::-moz-range-thumb {
           width: 22px;
           height: 18px;
-          background: #2563eb;
+          background: #047857;
           clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
           border: none;
           cursor: pointer;
         }
-        .arrow-orange::-moz-range-thumb { background: #f97316; }
       `}</style>
     </div>
   );
