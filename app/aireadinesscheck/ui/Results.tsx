@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import jsPDF from "jspdf";
-import Image from "next/image";  // <-- import Next.js Image component
+import Image from "next/image";
 
 type TotalsRow = {
   name: string;
@@ -42,6 +42,7 @@ function statusBadgeColor(status: string): string {
   }
 }
 
+// Human-readable status used in headings and PDF summary
 const statusText = (v: number) =>
   v < 25 ? "Critical" :
   v < 50 ? "At Risk" :
@@ -59,15 +60,15 @@ export default function Results({
   const avg = getAvg();
   const [copied, setCopied] = useState(false);
 
-  // Updated: async handler to embed the logo in the PDF
+  // Generate and download the PDF with the footer
   const handleDownload = async () => {
     const pdf = new jsPDF("p", "mm", "a4");
-    const W = pdf.internal.pageSize.getWidth();
-    const H = pdf.internal.pageSize.getHeight();
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
 
     // Header bar
     pdf.setFillColor(0, 86, 255);
-    pdf.rect(0, 0, W, 22, "F");
+    pdf.rect(0, 0, pageWidth, 22, "F");
     pdf.setTextColor(255, 255, 255);
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(16);
@@ -87,7 +88,7 @@ export default function Results({
     pdf.setFontSize(24);
     pdf.text(`${avg}% (${statusText(avg)})`, 10, 42);
 
-    // Table headers
+    // Table header
     let y = 54;
     const colX = { enabler: 10, total: 120, readiness: 150, status: 175 };
     pdf.setTextColor(0, 0, 0);
@@ -98,13 +99,14 @@ export default function Results({
     pdf.text("Readiness %", colX.readiness, y);
     pdf.text("Status", colX.status, y);
     pdf.setLineWidth(0.3);
-    pdf.line(10, y + 2, W - 10, y + 2);
+    pdf.line(10, y + 2, pageWidth - 10, y + 2);
     y += 8;
 
-    // Table rows with pagination
+    // Table rows, leaving room for footer
     pdf.setFont("helvetica", "normal");
     const lineHeight = 7;
-    const bottom = H - 30; // leave space for footer
+    const footerRoom = 40; // space reserved for logo + 2 lines of text
+    const bottom = pageHeight - footerRoom;
     totals.forEach((t) => {
       if (y > bottom) {
         pdf.addPage();
@@ -132,45 +134,55 @@ export default function Results({
       });
     });
 
-    // Footer with logo and trademark
-    // Load the WebP logo, draw it on a canvas, then convert to PNG for jsPDF
-    const img = new window.Image();
-    img.src = "/LeadAI.webp";
-    await img.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = img.width;
-    canvas.height = img.height;
-    const ctx = canvas.getContext("2d")!;
-    ctx.drawImage(img, 0, 0);
-    const dataUrl = canvas.toDataURL("image/png");
+    // Footer: convert the logo to PNG only on client side
+    let logoData: string | null = null;
+    let logoWidth = 25;
+    let logoHeight = 10;
+    if (typeof window !== "undefined") {
+      const img = new (window as any).Image();
+      img.src = "/LeadAI.webp";
+      await img.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0);
+      logoData = canvas.toDataURL("image/png");
+      logoHeight = (img.height / img.width) * logoWidth;
+    }
 
-    const logoWidth = 25; // mm
-    const logoHeight = (img.height / img.width) * logoWidth;
-    const footerY = H - 15; // Y position for footer content
+    // Define positions for footer content
+    const baseY = pageHeight - 15;
+    if (logoData) {
+      pdf.addImage(logoData, "PNG", 10, baseY - logoHeight + 2, logoWidth, logoHeight);
+    }
+    const textX = 10 + logoWidth + 4;
+    const firstLineY = baseY - 2; // ISO statement line
+    const secondLineY = baseY + 3; // trademark line
 
-    pdf.addImage(dataUrl, "PNG", 10, footerY, logoWidth, logoHeight);
+    pdf.setFontSize(8);
     pdf.setTextColor(0, 0, 0);
-    pdf.setFontSize(10);
-    pdf.text("LeadAI™ ©2025", 10 + logoWidth + 4, footerY + logoHeight - 3);
+    pdf.text("© LeadAI™ | ISO 42001 & EU AI Act aligned readiness diagnostic", textX, firstLineY);
+    pdf.text("LeadAI™ ©2025", textX, secondLineY);
 
+    // Save the PDF
     pdf.save("LeadAI_Readiness_Report.pdf");
   };
 
+  // Copy shareable link
   const handleShare = async () => {
     try {
       if (typeof window === "undefined") return;
       const payload = { totals, avg };
       const encoded = btoa(JSON.stringify(payload));
-      const url = `${window.location.origin}/aireadinesscheck?results=${encodeURIComponent(
-        encoded
-      )}`;
+      const url = `${window.location.origin}/aireadinesscheck?results=${encodeURIComponent(encoded)}`;
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(url);
       }
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
-      // ignore copy errors silently
+      // ignore copy errors
     }
   };
 
@@ -179,9 +191,7 @@ export default function Results({
       {/* Header + actions */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="space-y-2">
-          <h1 className="text-xl font-semibold text-slate-900">
-            AI Readiness Summary
-          </h1>
+          <h1 className="text-xl font-semibold text-slate-900">AI Readiness Summary</h1>
           <p className="max-w-xl text-sm text-slate-600">
             This overview shows how your organisation scores across key AI readiness categories,
             based on your responses to each slider.
@@ -227,9 +237,7 @@ export default function Results({
       {/* Overall average */}
       <div className="flex items-center justify-between rounded-2xl bg-slate-900 px-6 py-5 text-slate-50">
         <div>
-          <div className="text-xs uppercase tracking-wide text-slate-300">
-            Overall readiness
-          </div>
+          <div className="text-xs uppercase tracking-wide text-slate-300">Overall readiness</div>
           <div className="flex items-baseline gap-2">
             <div className="text-3xl font-semibold">{avg}%</div>
           </div>
@@ -252,13 +260,9 @@ export default function Results({
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold text-slate-900">
-                    {row.name}
-                  </h2>
+                  <h2 className="text-sm font-semibold text-slate-900">{row.name}</h2>
                   {enablerMeta?.description && (
-                    <p className="mt-1 text-xs text-slate-600">
-                      {enablerMeta.description}
-                    </p>
+                    <p className="mt-1 text-xs text-slate-600">{enablerMeta.description}</p>
                   )}
                 </div>
                 <div
@@ -269,9 +273,7 @@ export default function Results({
               </div>
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span>Readiness score</span>
-                <span className="font-medium text-slate-800">
-                  {row.readiness}%
-                </span>
+                <span className="font-medium text-slate-800">{row.readiness}%</span>
               </div>
               <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
                 <div
@@ -284,17 +286,21 @@ export default function Results({
         })}
       </div>
 
-      {/* New footer with logo and trademark */}
+      {/* Updated footer with ISO statement and trademark */}
       <footer className="mt-8 flex flex-col items-center justify-center gap-2 border-t pt-4">
-        <a
-          href="https://www.theleadai.co.uk/"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {/* Adjust width/height as desired; preserve aspect ratio */}
-          <Image src="/LeadAI.webp" alt="LeadAI logo" width={80} height={22} />
-        </a>
-        <span className="text-xs text-slate-500">LeadAI™ ©2025</span>
+        <span className="text-xs text-slate-500">
+          © LeadAI™ | ISO 42001 & EU AI Act aligned readiness diagnostic
+        </span>
+        <div className="flex items-center gap-2">
+          <a
+            href="https://www.theleadai.co.uk/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Image src="/LeadAI.webp" alt="LeadAI logo" width={80} height={22} />
+          </a>
+          <span className="text-xs text-slate-500">LeadAI™ ©2025</span>
+        </div>
       </footer>
     </div>
   );
