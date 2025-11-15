@@ -41,7 +41,7 @@ function statusBadgeColor(status: string): string {
   }
 }
 
-// Textual status for summary blocks
+// Used to describe readiness in the PDF
 const statusText = (v: number) =>
   v < 25 ? "Critical" :
   v < 50 ? "At Risk" :
@@ -59,7 +59,7 @@ export default function Results({
   const avg = getAvg();
   const [copied, setCopied] = useState(false);
 
-  // Generate and download the PDF using jsPDF
+  // Generates and downloads a PDF
   const handleDownload = () => {
     const pdf = new jsPDF("p", "mm", "a4");
     const W = pdf.internal.pageSize.getWidth();
@@ -101,7 +101,7 @@ export default function Results({
     pdf.line(10, y + 2, W - 10, y + 2);
     y += 8;
 
-    // Populate table rows with pagination
+    // Table rows, with pagination
     pdf.setFont("helvetica", "normal");
     const lineHeight = 7;
     const bottom = H - 18;
@@ -111,8 +111,10 @@ export default function Results({
         y = 20;
       }
       const maxWidth = colX.total - colX.enabler - 2;
-      const lines = pdf.splitTextToSize(t.name, maxWidth);
-      lines.forEach((ln, i) => {
+      // splitTextToSize returns "any[]" so cast to string[]
+      const lines = pdf.splitTextToSize(t.name, maxWidth) as string[];
+
+      lines.forEach((ln: string, i: number) => {
         if (i === 0) {
           pdf.text(String(ln), colX.enabler, y);
           pdf.text(String(t.sum), colX.total, y, { align: "left" });
@@ -126,6 +128,7 @@ export default function Results({
           pdf.text(t.status, colX.status, y, { align: "left" });
           pdf.setTextColor(0, 0, 0);
         } else {
+          // continuation lines for long enabler names
           pdf.text(String(ln), colX.enabler, y);
         }
         y += lineHeight;
@@ -143,19 +146,16 @@ export default function Results({
   const handleShare = async () => {
     try {
       if (typeof window === "undefined") return;
-
       const payload = { totals, avg };
       const encoded = btoa(JSON.stringify(payload));
       const url = `${window.location.origin}/aireadinesscheck?results=${encodeURIComponent(encoded)}`;
-
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(url);
       }
-
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
-      // ignore copy errors silently
+      // ignore copy errors
     }
   };
 
@@ -232,7 +232,6 @@ export default function Results({
           const enablerMeta = enablers.find((e) => e.name === row.name);
           const color = readinessColor(row.readiness);
           const badgeColor = statusBadgeColor(row.status);
-
           return (
             <div
               key={row.name}
@@ -240,13 +239,9 @@ export default function Results({
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold text-slate-900">
-                    {row.name}
-                  </h2>
+                  <h2 className="text-sm font-semibold text-slate-900">{row.name}</h2>
                   {enablerMeta?.description && (
-                    <p className="mt-1 text-xs text-slate-600">
-                      {enablerMeta.description}
-                    </p>
+                    <p className="mt-1 text-xs text-slate-600">{enablerMeta.description}</p>
                   )}
                 </div>
                 <div
@@ -258,9 +253,7 @@ export default function Results({
 
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span>Readiness score</span>
-                <span className="font-medium text-slate-800">
-                  {row.readiness}%
-                </span>
+                <span className="font-medium text-slate-800">{row.readiness}%</span>
               </div>
 
               <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
