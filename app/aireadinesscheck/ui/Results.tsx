@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import jsPDF from "jspdf";
+import Image from "next/image";  // <-- import Next.js Image component
 
 type TotalsRow = {
   name: string;
@@ -41,7 +42,6 @@ function statusBadgeColor(status: string): string {
   }
 }
 
-// Used to describe readiness in the PDF
 const statusText = (v: number) =>
   v < 25 ? "Critical" :
   v < 50 ? "At Risk" :
@@ -59,8 +59,8 @@ export default function Results({
   const avg = getAvg();
   const [copied, setCopied] = useState(false);
 
-  // Generates and downloads a PDF
-  const handleDownload = () => {
+  // Updated: async handler to embed the logo in the PDF
+  const handleDownload = async () => {
     const pdf = new jsPDF("p", "mm", "a4");
     const W = pdf.internal.pageSize.getWidth();
     const H = pdf.internal.pageSize.getHeight();
@@ -101,19 +101,17 @@ export default function Results({
     pdf.line(10, y + 2, W - 10, y + 2);
     y += 8;
 
-    // Table rows, with pagination
+    // Table rows with pagination
     pdf.setFont("helvetica", "normal");
     const lineHeight = 7;
-    const bottom = H - 18;
+    const bottom = H - 30; // leave space for footer
     totals.forEach((t) => {
       if (y > bottom) {
         pdf.addPage();
         y = 20;
       }
       const maxWidth = colX.total - colX.enabler - 2;
-      // splitTextToSize returns "any[]" so cast to string[]
       const lines = pdf.splitTextToSize(t.name, maxWidth) as string[];
-
       lines.forEach((ln: string, i: number) => {
         if (i === 0) {
           pdf.text(String(ln), colX.enabler, y);
@@ -128,17 +126,32 @@ export default function Results({
           pdf.text(t.status, colX.status, y, { align: "left" });
           pdf.setTextColor(0, 0, 0);
         } else {
-          // continuation lines for long enabler names
           pdf.text(String(ln), colX.enabler, y);
         }
         y += lineHeight;
       });
     });
 
-    // Footer
-    pdf.setFontSize(9);
-    pdf.setTextColor(120);
-    pdf.text("© LeadAI™ | ISO 42001 & EU AI Act aligned readiness diagnostic", 10, H - 8);
+    // Footer with logo and trademark
+    // Load the WebP logo, draw it on a canvas, then convert to PNG for jsPDF
+    const img = new window.Image();
+    img.src = "/LeadAI.webp";
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(img, 0, 0);
+    const dataUrl = canvas.toDataURL("image/png");
+
+    const logoWidth = 25; // mm
+    const logoHeight = (img.height / img.width) * logoWidth;
+    const footerY = H - 15; // Y position for footer content
+
+    pdf.addImage(dataUrl, "PNG", 10, footerY, logoWidth, logoHeight);
+    pdf.setTextColor(0, 0, 0);
+    pdf.setFontSize(10);
+    pdf.text("LeadAI™ ©2025", 10 + logoWidth + 4, footerY + logoHeight - 3);
 
     pdf.save("LeadAI_Readiness_Report.pdf");
   };
@@ -148,14 +161,16 @@ export default function Results({
       if (typeof window === "undefined") return;
       const payload = { totals, avg };
       const encoded = btoa(JSON.stringify(payload));
-      const url = `${window.location.origin}/aireadinesscheck?results=${encodeURIComponent(encoded)}`;
+      const url = `${window.location.origin}/aireadinesscheck?results=${encodeURIComponent(
+        encoded
+      )}`;
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(url);
       }
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
-      // ignore copy errors
+      // ignore copy errors silently
     }
   };
 
@@ -172,7 +187,6 @@ export default function Results({
             based on your responses to each slider.
           </p>
         </div>
-
         <div className="flex flex-col items-end gap-2">
           {mode === "shared" && (
             <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
@@ -180,7 +194,6 @@ export default function Results({
               Shared view
             </div>
           )}
-
           <div className="flex items-center gap-4">
             {mode !== "shared" && (
               <>
@@ -239,9 +252,13 @@ export default function Results({
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold text-slate-900">{row.name}</h2>
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    {row.name}
+                  </h2>
                   {enablerMeta?.description && (
-                    <p className="mt-1 text-xs text-slate-600">{enablerMeta.description}</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {enablerMeta.description}
+                    </p>
                   )}
                 </div>
                 <div
@@ -250,12 +267,12 @@ export default function Results({
                   {row.status}
                 </div>
               </div>
-
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span>Readiness score</span>
-                <span className="font-medium text-slate-800">{row.readiness}%</span>
+                <span className="font-medium text-slate-800">
+                  {row.readiness}%
+                </span>
               </div>
-
               <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
                 <div
                   className={`h-full rounded-full ${color}`}
@@ -266,6 +283,19 @@ export default function Results({
           );
         })}
       </div>
+
+      {/* New footer with logo and trademark */}
+      <footer className="mt-8 flex flex-col items-center justify-center gap-2 border-t pt-4">
+        <a
+          href="https://www.theleadai.co.uk/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {/* Adjust width/height as desired; preserve aspect ratio */}
+          <Image src="/LeadAI.webp" alt="LeadAI logo" width={80} height={22} />
+        </a>
+        <span className="text-xs text-slate-500">LeadAI™ ©2025</span>
+      </footer>
     </div>
   );
 }
