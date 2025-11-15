@@ -39,8 +39,11 @@ export default function AIReadinessCheckPage() {
     enablers.map((e) => {
       const themeScores: StageScore[] = scores[e.name] || [];
 
-      // Map stage 0..4 → -2..+2 (centre = neutral)
-      const rawSum = themeScores.reduce((acc, stage) => acc + (stage - 2), 0);
+	// Map stage 0..4 → -2..+2 (centre = neutral)
+	const rawSum = themeScores.reduce<number>(
+	  (acc, stage) => acc + (stage - 2),
+	  0
+	);
 
       // Max absolute value for this enabler (2 points either side per theme)
       const maxAbs = Math.max(1, themeScores.length * 2);

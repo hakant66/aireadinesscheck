@@ -17,8 +17,8 @@ export default function Header() {
           <Image
             src="/LeadAI.webp"
             alt="LeadAI"
-            width={36}
-            height={36}
+            width={60}
+            height={60}
             className="rounded-lg ring-1 ring-white/40"
           />
           <div>
