@@ -1,7 +1,7 @@
 // src/app/api/ai-readiness-results/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { put } from "@vercel/blob"; // ✅ Vercel Blob
 import { pool } from "@/lib/db";
+import { uploadPdfToMinio } from "@/lib/minio";
 import {
   buildAiReadinessPdfServerBytes,
   type TotalsRowServer,
@@ -27,7 +27,7 @@ function generateSlug(length = 6): string {
   return slug;
 }
 
-// POST: create DB row + server-side PDF in Vercel Blob
+// POST: create DB row + server-side PDF in MinIO
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as PostBody;
@@ -40,9 +40,11 @@ export async function POST(req: NextRequest) {
     }
 
     const slug = generateSlug();
-    const createdAt = body.createdAt ? new Date(body.createdAt) : new Date();
+    const createdAt = body.createdAt
+      ? new Date(body.createdAt)
+      : new Date();
 
-    // Build the server-side PDF (with answers)
+    // Build the server-side PDF (with answers) for MinIO
     const serverPdfBytes = await buildAiReadinessPdfServerBytes(
       body.totals,
       body.avg,
@@ -51,19 +53,11 @@ export async function POST(req: NextRequest) {
       body.answers
     );
 
-    // Upload PDF to Vercel Blob
     const pdfKey = `ai-readiness/${slug}.pdf`;
-
-    // buildAiReadinessPdfServerBytes likely returns Uint8Array; Buffer works in Node runtime
-    const pdfBuffer = Buffer.from(serverPdfBytes);
-
-    const blob = await put(pdfKey, pdfBuffer, {
-      access: "public", // public URL for direct download/view
-      contentType: "application/pdf",
-      addRandomSuffix: false, // keep deterministic path based on slug
-    });
-
-    const pdfUrl = blob.url; // this replaces the old MinIO URL
+    const pdfUrl = await uploadPdfToMinio(
+      pdfKey,
+      Buffer.from(serverPdfBytes)
+    );
 
     const userName = body.userInfo
       ? `${body.userInfo.firstName ?? ""} ${
