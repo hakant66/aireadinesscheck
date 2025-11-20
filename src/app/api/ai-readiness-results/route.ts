@@ -1,4 +1,4 @@
-// src/app/api/ai-readiness-results/route.ts
+// src/app/api/ai-readiness-results/route.ts (only showing POST)
 import { NextRequest, NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { pool } from "@/lib/db";
@@ -14,7 +14,6 @@ type PostBody = {
   avg: number;
   userInfo?: UserInfoServer;
   answers?: AnswerSummaryServer[];
-  /** ISO string timestamp; if omitted, server will use current time */
   createdAt?: string;
 };
 
@@ -51,26 +50,23 @@ export async function POST(req: NextRequest) {
       body.answers
     );
 
-    // Convert to Buffer for Vercel Blob
     const pdfBuffer = Buffer.from(serverPdfBytes);
     const pdfKey = `ai-readiness/${slug}.pdf`;
 
-    // Optional: use token if present, so local dev can work if you set BLOB_READ_WRITE_TOKEN
-    const token = process.env.BLOB_READ_WRITE_TOKEN;
-
     let pdfUrl: string | null = null;
+    const hasBlobToken = !!process.env.BLOB_READ_WRITE_TOKEN;
 
-    if (!token && process.env.NODE_ENV === "development") {
-      // In local dev without token, skip upload but don't fail
+    if (!hasBlobToken && process.env.NODE_ENV === "development") {
+      // Local dev with no Blob token: skip upload but don't crash
       console.warn(
         "BLOB_READ_WRITE_TOKEN not set in dev – skipping PDF upload locally."
       );
     } else {
+      // On Vercel, Blob SDK uses BLOB_READ_WRITE_TOKEN automatically.
       const blob = await put(pdfKey, pdfBuffer, {
-        access: "public", // public URL for direct download/view
+        access: "public",
         contentType: "application/pdf",
-        addRandomSuffix: false, // keep deterministic path based on slug
-        token, // Vercel will inject this in production; local dev can use .env.local
+        addRandomSuffix: false,
       });
 
       pdfUrl = blob.url;
@@ -85,7 +81,6 @@ export async function POST(req: NextRequest) {
     const userEmail = body.userInfo?.email ?? null;
     const company = body.userInfo?.company ?? null;
 
-    // Persist row in DB
     await pool.query(
       `
       INSERT INTO ai_readiness_results
@@ -100,7 +95,7 @@ export async function POST(req: NextRequest) {
         userName,
         userEmail,
         company,
-        pdfUrl, // may be null in local dev if token missing
+        pdfUrl,
         createdAt.toISOString(),
       ]
     );
@@ -110,59 +105,6 @@ export async function POST(req: NextRequest) {
     console.error("ai-readiness-results POST error", error);
     return NextResponse.json(
       { error: "Failed to persist AI readiness results" },
-      { status: 500 }
-    );
-  }
-}
-
-// GET: list results for admin dashboard (paginated)
-export async function GET(req: NextRequest) {
-  try {
-    const url = new URL(req.url);
-    const pageParam = url.searchParams.get("page") ?? "1";
-    const pageSizeParam = url.searchParams.get("pageSize") ?? "20";
-
-    const page = Math.max(parseInt(pageParam, 10) || 1, 1);
-    const pageSizeRaw = parseInt(pageSizeParam, 10) || 20;
-    const pageSize = Math.min(Math.max(pageSizeRaw, 1), 100);
-    const offset = (page - 1) * pageSize;
-
-    // Basic list, newest first
-    const listResult = await pool.query(
-      `
-      SELECT
-        id,
-        slug,
-        avg,
-        user_name,
-        user_email,
-        company,
-        created_at
-      FROM ai_readiness_results
-      ORDER BY created_at DESC
-      LIMIT $1 OFFSET $2
-      `,
-      [pageSize, offset]
-    );
-
-    const countResult = await pool.query(
-      "SELECT COUNT(*)::int AS count FROM ai_readiness_results"
-    );
-    const totalCount: number = countResult.rows[0]?.count ?? 0;
-
-    return NextResponse.json(
-      {
-        results: listResult.rows,
-        totalCount,
-        page,
-        pageSize,
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error("ai-readiness-results GET error", error);
-    return NextResponse.json(
-      { error: "Failed to fetch AI readiness results" },
       { status: 500 }
     );
   }

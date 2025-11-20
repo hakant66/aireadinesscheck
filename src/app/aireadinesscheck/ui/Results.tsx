@@ -66,11 +66,11 @@ function statusBadgeColor(status: string): string {
 }
 
 const statusText = (v: number) =>
-  v < 25
+  v < 26
     ? "Critical"
-    : v < 50
+    : v < 61
     ? "At Risk"
-    : v < 75
+    : v < 81
     ? "Established"
     : "Leading";
 
@@ -145,11 +145,11 @@ export default function Results({
 
       // Overall readiness
       const overallColor =
-        avg < 25
+        avg < 26
           ? [232, 30, 30]
-          : avg < 50
+          : avg < 61
           ? [255, 192, 0]
-          : avg < 75
+          : avg < 81
           ? [0, 176, 80]
           : [0, 86, 255];
 
@@ -172,7 +172,7 @@ export default function Results({
       pdf.setFontSize(9);
       pdf.setTextColor(100, 116, 139);
       pdf.text(
-        "0–24% Critical / 25–49% At Risk / 50–74% Established / 75–100% Leading",
+        "0–25% Critical / 26–60% At Risk / 61–80% Established / 81–100% Leading",
         marginX,
         y
       );
@@ -219,11 +219,11 @@ export default function Results({
             pdf.text(`${t.readiness}%`, colX.readiness, y, { align: "left" });
 
             const rc =
-              t.readiness < 25
+              t.readiness < 26
                 ? [232, 30, 30]
-                : t.readiness < 50
+                : t.readiness < 61
                 ? [255, 192, 0]
-                : t.readiness < 75
+                : t.readiness < 81
                 ? [0, 176, 80]
                 : [0, 86, 255];
 
@@ -520,7 +520,7 @@ export default function Results({
             </div>
           </div>
           <p className="mt-1 max-w-md text-xs text-slate-300">
-            0-24% Critical / 25-49% At Risk / 50-74% Established / 75-100%
+            0-25% Critical / 26-60% At Risk / 61-80% Established / 81-100%
             Leading.
           </p>
         </div>
