@@ -31,6 +31,13 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as PostBody;
 
+	console.log(
+	  "Env vars equal to 'base':",
+	  Object.entries(process.env)
+		.filter(([_, v]) => v === "base")
+		.map(([k]) => k)
+	);
+
     if (!body?.totals || typeof body.avg !== "number") {
       return NextResponse.json(
         { error: "Invalid payload: totals/avg missing" },
