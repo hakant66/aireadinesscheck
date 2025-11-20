@@ -1,4 +1,4 @@
-// src/app/api/ai-readiness-results/route.ts (only showing POST)
+// src/app/api/ai-readiness-results/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { pool } from "@/lib/db";
@@ -14,6 +14,7 @@ type PostBody = {
   avg: number;
   userInfo?: UserInfoServer;
   answers?: AnswerSummaryServer[];
+  /** ISO string timestamp; if omitted, server will use current time */
   createdAt?: string;
 };
 
@@ -26,17 +27,15 @@ function generateSlug(length = 6): string {
   return slug;
 }
 
-// POST: create DB row + server-side PDF in Vercel Blob
+/**
+ * POST: store a new AI Readiness result
+ * - builds a PDF
+ * - uploads it to Vercel Blob
+ * - inserts row into ai_readiness_results
+ */
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as PostBody;
-
-	console.log(
-	  "Env vars equal to 'base':",
-	  Object.entries(process.env)
-		.filter(([_, v]) => v === "base")
-		.map(([k]) => k)
-	);
 
     if (!body?.totals || typeof body.avg !== "number") {
       return NextResponse.json(
@@ -70,13 +69,18 @@ export async function POST(req: NextRequest) {
       );
     } else {
       // On Vercel, Blob SDK uses BLOB_READ_WRITE_TOKEN automatically.
-      const blob = await put(pdfKey, pdfBuffer, {
-        access: "public",
-        contentType: "application/pdf",
-        addRandomSuffix: false,
-      });
-
-      pdfUrl = blob.url;
+      // If something goes wrong here, we log but still continue so the DB row is written.
+      try {
+        const blob = await put(pdfKey, pdfBuffer, {
+          access: "public",
+          contentType: "application/pdf",
+          addRandomSuffix: false,
+        });
+        pdfUrl = blob.url;
+      } catch (e) {
+        console.error("Blob upload failed, continuing without PDF URL", e);
+        pdfUrl = null;
+      }
     }
 
     const userName = body.userInfo
@@ -88,6 +92,7 @@ export async function POST(req: NextRequest) {
     const userEmail = body.userInfo?.email ?? null;
     const company = body.userInfo?.company ?? null;
 
+    // Persist row in DB
     await pool.query(
       `
       INSERT INTO ai_readiness_results
@@ -112,6 +117,62 @@ export async function POST(req: NextRequest) {
     console.error("ai-readiness-results POST error", error);
     return NextResponse.json(
       { error: "Failed to persist AI readiness results" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * GET: list results for admin dashboard (paginated)
+ * - used by /aireadinesscheck/admin
+ */
+export async function GET(req: NextRequest) {
+  try {
+    const url = new URL(req.url);
+    const pageParam = url.searchParams.get("page") ?? "1";
+    const pageSizeParam = url.searchParams.get("pageSize") ?? "20";
+
+    const page = Math.max(parseInt(pageParam, 10) || 1, 1);
+    const pageSizeRaw = parseInt(pageSizeParam, 10) || 20;
+    const pageSize = Math.min(Math.max(pageSizeRaw, 1), 100);
+    const offset = (page - 1) * pageSize;
+
+    // Basic list, newest first
+    const listResult = await pool.query(
+      `
+      SELECT
+        id,
+        slug,
+        avg,
+        user_name,
+        user_email,
+        company,
+        created_at
+      FROM ai_readiness_results
+      ORDER BY created_at DESC
+      LIMIT $1 OFFSET $2
+      `,
+      [pageSize, offset]
+    );
+
+    const countResult = await pool.query(
+      "SELECT COUNT(*)::int AS count FROM ai_readiness_results"
+    );
+    const totalCount: number = countResult.rows[0]?.count ?? 0;
+
+    return NextResponse.json(
+      {
+        results: listResult.rows,
+        totalCount,
+        page,
+        pageSize,
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("ai-readiness-results GET error", error);
+    return NextResponse.json(
+      { error: "Failed to fetch AI readiness results" },
       { status: 500 }
     );
   }
