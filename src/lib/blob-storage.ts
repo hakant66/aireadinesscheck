@@ -3,19 +3,18 @@ import { put } from "@vercel/blob";
 
 /**
  * Upload a PDF Buffer to Vercel Blob.
- * Returns the blob object (includes url & pathname).
+ * `buffer` MUST be a Node.js Buffer (we convert to Buffer in the caller).
  */
 export async function uploadPdfToBlob(
   filename: string,
-  buffer: Buffer | Uint8Array
+  buffer: Buffer
 ) {
-  // access: 'public' → the URL is directly usable
   const blob = await put(filename, buffer, {
     access: "public",
     contentType: "application/pdf",
-    addRandomSuffix: true, // avoids collisions
+    addRandomSuffix: false, // slug-based path stays stable
   });
 
-  // blob has shape: { url, pathname, size, uploadedAt, ... }
+  // blob: { url, pathname, size, uploadedAt, ... }
   return blob;
 }

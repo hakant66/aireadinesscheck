@@ -1,6 +1,6 @@
 // src/app/api/ai-readiness-results/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { put } from "@vercel/blob"; // ✅ Vercel Blob
+import { put } from "@vercel/blob";
 import { pool } from "@/lib/db";
 import {
   buildAiReadinessPdfServerBytes,
@@ -51,19 +51,30 @@ export async function POST(req: NextRequest) {
       body.answers
     );
 
-    // Upload PDF to Vercel Blob
+    // Convert to Buffer for Vercel Blob
+    const pdfBuffer = Buffer.from(serverPdfBytes);
     const pdfKey = `ai-readiness/${slug}.pdf`;
 
-    // buildAiReadinessPdfServerBytes likely returns Uint8Array; Buffer works in Node runtime
-    const pdfBuffer = Buffer.from(serverPdfBytes);
+    // Optional: use token if present, so local dev can work if you set BLOB_READ_WRITE_TOKEN
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
 
-    const blob = await put(pdfKey, pdfBuffer, {
-      access: "public", // public URL for direct download/view
-      contentType: "application/pdf",
-      addRandomSuffix: false, // keep deterministic path based on slug
-    });
+    let pdfUrl: string | null = null;
 
-    const pdfUrl = blob.url; // this replaces the old MinIO URL
+    if (!token && process.env.NODE_ENV === "development") {
+      // In local dev without token, skip upload but don't fail
+      console.warn(
+        "BLOB_READ_WRITE_TOKEN not set in dev – skipping PDF upload locally."
+      );
+    } else {
+      const blob = await put(pdfKey, pdfBuffer, {
+        access: "public", // public URL for direct download/view
+        contentType: "application/pdf",
+        addRandomSuffix: false, // keep deterministic path based on slug
+        token, // Vercel will inject this in production; local dev can use .env.local
+      });
+
+      pdfUrl = blob.url;
+    }
 
     const userName = body.userInfo
       ? `${body.userInfo.firstName ?? ""} ${
@@ -89,7 +100,7 @@ export async function POST(req: NextRequest) {
         userName,
         userEmail,
         company,
-        pdfUrl,
+        pdfUrl, // may be null in local dev if token missing
         createdAt.toISOString(),
       ]
     );
